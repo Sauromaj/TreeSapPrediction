@@ -2,6 +2,7 @@ import ee
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import datetime
 
 
 def ret_normalized_land_temperature(start_date, end_date, lat, long, project = 'bramhackstest'):
@@ -13,10 +14,21 @@ def ret_normalized_land_temperature(start_date, end_date, lat, long, project = '
 
     # 1️⃣ MODIS Land Surface Temperature (MOD11A1)
     # LST values are scaled by 0.02 and originally in Kelvin
+
+    # 1️⃣ Convert start_date to datetime
+    start_date_dt = datetime.datetime.strptime(start_date, "%Y-%m-%d")
+
+    # 2️⃣ Subtract 2 years
+    start_date_2yrs_ago = start_date_dt.replace(year=start_date_dt.year - 2)
+
+    new_start_date = start_date_2yrs_ago.strftime('%Y-%m-%d')
+
+    end_date = datetime.datetime.today().strftime("%Y-%m-%d")
+
     modis = (
         ee.ImageCollection('MODIS/061/MOD11A1')
         .filterBounds(area)
-        .filterDate(start_date, end_date)
+        .filterDate(new_start_date, end_date)
         .select(['LST_Day_1km', 'LST_Night_1km'])
         .map(lambda img: img.multiply(0.02).subtract(273.15)  # Convert K → °C
             .copyProperties(img, ['system:time_start']))
@@ -50,9 +62,13 @@ def ret_normalized_land_temperature(start_date, end_date, lat, long, project = '
 
     # Convert to DataFrames
 
+    print(modis_fc)
+
     modis_list = modis_fc.getInfo()['features']
 
     modis_df = pd.DataFrame([f['properties'] for f in modis_list])
+
+    print(modis_df)
 
 
     # --- Assume modis_df is your dataframe with ['time', 'LST_Day', 'LST_Night'] ---
@@ -72,7 +88,7 @@ def ret_normalized_land_temperature(start_date, end_date, lat, long, project = '
     predictions = []
 
     for current_date in all_dates:
-        past_start = current_date - pd.DateOffset(years=5)
+        past_start = current_date - pd.DateOffset(years=2)
         past_end = current_date - pd.DateOffset(years=1)  # Up to last year
         
         past_data = modis_df[(modis_df['time'] >= past_start) & (modis_df['time'] <= past_end)]
@@ -120,8 +136,8 @@ def ret_normalized_land_temperature(start_date, end_date, lat, long, project = '
 
 if __name__ == "__main__":
      # Sap flow season
-    start_date = '2022-02-01'
-    end_date   = '2024-04-01'
-    lat, long = [-72.5, 46.5]
+    start_date = '2026-03-04'
+    end_date   = '2026-03-30'
+    lat, long = [-79.7599366, 43.685832]
 
     print(ret_normalized_land_temperature(start_date,end_date, lat, long, project = 'bramhackstest'))

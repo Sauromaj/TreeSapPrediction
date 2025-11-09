@@ -26,14 +26,20 @@ def get_freeze_thaw_data(address: str = Query(..., description="Full address to 
     start_date, end_date = Predict(lat, lon)
 
     LST_data_normalized = get_lst_data(start_date, end_date, lat, lon)
-    Soil_data_normalized = get_soil_moisture_data(start_date, end_date, lat, lon)
+    # Soil_data_normalized = get_soil_moisture_data(start_date, end_date, lat, lon)
     Pressure_data_normalized = get_pressure_data(lat, lon, start_date, end_date)
 
-    normalized_data = calculate_index(LST_data_normalized,Pressure_data_normalized, Soil_data_normalized)
+
+    # print(LST_data_normalized)
+    # print(Soil_data_normalized)
+    # print(Pressure_data_normalized)
+    normalized_data = calculate_index(LST_data_normalized,Pressure_data_normalized, LST_data_normalized)
+
 
     # Calculate index value to adjust start_date
-    index_value = normalized_data.mean()
-    start_date = datetime.strptime(start_date, '%Y-%m-%d') + timedelta(days=int(index_value * 7))
+    # print(normalized_data)
+    index_value = normalized_data["combined_index"].idxmax(skipna=True)
+    start_date = datetime.strptime(start_date, '%Y-%m-%d') + timedelta(days=int(index_value))
     pick_date = start_date.strftime('%Y-%m-%d')
 
 
@@ -91,6 +97,11 @@ def get_lst_data(
     for a given location and time range.
     """
 
+    print(start_date)
+    print(end_date)
+    print(lat)
+    print(long)
+
     land_surface_data = ret_normalized_land_temperature(start_date, end_date, lat, long)
 
     return land_surface_data
@@ -111,7 +122,7 @@ def get_soil_moisture_data(
     for a given location and time range.
     """
 
-    soil_fetch = SmapFetcher(lat, long)
+    soil_fetch = SmapFetcher(lat, long, start_date, end_date)
 
     soil_data = soil_fetch.main()
 
@@ -128,11 +139,16 @@ def calculate_index(
     """
 
     # Convert lists to pandas DataFrame for vector operations
+    LST_day_normalized.fillna(0)
+    Pressure_day_normalized.fillna(0)
+    soil_moisture_normalized.fillna(0)
+
     df = pd.DataFrame({
         "LST_day_normalized": LST_day_normalized,
         "Pressure_day_normalized": Pressure_day_normalized,
         "soil_moisture_normalized": soil_moisture_normalized
     })
+
 
     # Example: simple weighted average index
     df["combined_index"] = (
@@ -164,6 +180,8 @@ def get_pressure_data(
     # 1️⃣ Initialize the fetcher
     fetcher = PressureDataFetcher(lat, lon)
 
+    fetcher.get_past_5years()
+
     # 2️⃣ Fetch normalized pressure values
     pressure_values = fetcher.normalizedPrediction(start_date, end_date)
 
@@ -171,4 +189,4 @@ def get_pressure_data(
 
 
 if __name__ == "__main__":
-    print(get_freeze_thaw_data(address= 'Toronto, Canada'))
+    print(get_freeze_thaw_data(address= 'Brampton, Canada'))
