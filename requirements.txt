@@ -7,3 +7,6 @@ earthengine-api>=0.1.390
 
 # Geocoding (location → coordinates)
 geopy>=2.4.0
+
+# Plotting and visualization
+matplotlib>=3.9.0
