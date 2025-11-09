@@ -1,46 +1,63 @@
-from fastapi import FastAPI, Form
+from fastapi import FastAPI, Form, Query
 from fastapi.responses import JSONResponse
-import pandas as pd
 from twilio.rest import Client
+from datetime import datetime, timedelta
+import pandas as pd
+import numpy as np
 import os
 
-app = FastAPI(title="Freeze-Thaw Cycle API")
+from lst_data import ret_normalized_land_temperature
+from SoilMoistureData import SmapFetcher
+from PressureData import PressureDataFetcher
+from SeasonalPlanningAlerts import Predict
 
-# --- Your Freeze-Thaw Endpoint ---
+from utils import get_coordinates
+
+app = FastAPI(title="Freeze-Thaw, LST & Soil Moisture API")
+
+# --------------------------------------------------
+# 🧊 Freeze–Thaw Endpoint
+# --------------------------------------------------
 @app.get("/freeze-thaw")
-def get_freeze_thaw_data():
-    # Replace this with your real computed DataFrame
+def get_freeze_thaw_data(address: str = Query(..., description="Full address to fetch coordinates for")):
+    
+    lat, lon = get_coordinates(address)
+
+    start_date, end_date = Predict(lat, lon)
+
+    LST_data_normalized = get_lst_data(start_date, end_date, lat, lon)
+    Soil_data_normalized = get_soil_moisture_data(start_date, end_date, lat, lon)
+    Pressure_data_normalized = get_pressure_data(lat, lon, start_date, end_date)
+
+    normalized_data = calculate_index(LST_data_normalized,Pressure_data_normalized, Soil_data_normalized)
+
+    # Calculate index value to adjust start_date
+    index_value = normalized_data.mean()
+    start_date = datetime.strptime(start_date, '%Y-%m-%d') + timedelta(days=int(index_value * 7))
+    pick_date = start_date.strftime('%Y-%m-%d')
+
+
     data = {
-        "start_date_freeze_thaw": ["2025-02-01", "2025-02-03", "2025-02-05"],
-        "end_date_freeze_thaw": ["2025-02-02", "2025-02-04", "2025-02-06"],
-        "LST_day_normalized": [0.76, 0.81, 0.68],
-        "Pressure_day_normalized": [0.45, 0.53, 0.47],
-        "soil_moisture_normalized": [0.62, 0.59, 0.64],
+        "start_date_freeze_thaw": [start_date],
+        "pick_date": [pick_date],
+        "end_date_freeze_thaw": [end_date],
     }
 
     modis_df_final = pd.DataFrame(data)
     print(modis_df_final.head(10))
+    return JSONResponse(content=modis_df_final.to_dict(orient="records"))
 
-    result_json = modis_df_final.to_dict(orient="records")
-    return JSONResponse(content=result_json)
-
-
-# --- New SMS Endpoint ---
+# --------------------------------------------------
+# 📱 SMS Endpoint
+# --------------------------------------------------
 @app.post("/send-sms")
 def send_sms(
     to: str = Form(...),
     message: str = Form(...)
 ):
     """
-    Send an SMS to a user via Twilio.
-    Example form body:
-    {
-        "to": "+15551234567",
-        "message": "Freeze-thaw cycle detected!"
-    }
+    Send an SMS via Twilio.
     """
-
-    # 🔒 Load Twilio credentials (set these as environment variables)
     account_sid = os.getenv("TWILIO_ACCOUNT_SID")
     auth_token = os.getenv("TWILIO_AUTH_TOKEN")
     from_number = os.getenv("TWILIO_PHONE_NUMBER")
@@ -53,14 +70,105 @@ def send_sms(
 
     try:
         client = Client(account_sid, auth_token)
-        msg = client.messages.create(
-            body=message,
-            from_=from_number,
-            to=to
-        )
+        msg = client.messages.create(body=message, from_=from_number, to=to)
         return {"status": "success", "sid": msg.sid}
     except Exception as e:
-        return JSONResponse(
-            content={"status": "failed", "error": str(e)},
-            status_code=400
-        )
+        return JSONResponse(content={"status": "failed", "error": str(e)}, status_code=400)
+
+
+# --------------------------------------------------
+# 🌡️ Land Surface Temperature Data Endpoint
+# --------------------------------------------------
+
+def get_lst_data(
+    start_date: str = Query(..., description="Start date in YYYY-MM-DD format"),
+    end_date: str = Query(..., description="End date in YYYY-MM-DD format"),
+    lat: float = Query(..., description="Latitude in decimal degrees"),
+    long: float = Query(..., description="Longitude in decimal degrees"),
+):
+    """
+    Retrieve normalized Land Surface Temperature (LST) data
+    for a given location and time range.
+    """
+
+    land_surface_data = ret_normalized_land_temperature(start_date, end_date, lat, long)
+
+    return land_surface_data
+
+
+
+# --------------------------------------------------
+# 🌱 Soil Moisture Data Endpoint
+# --------------------------------------------------
+def get_soil_moisture_data(
+    start_date: str = Query(..., description="Start date in YYYY-MM-DD format"),
+    end_date: str = Query(..., description="End date in YYYY-MM-DD format"),
+    lat: float = Query(..., description="Latitude in decimal degrees"),
+    long: float = Query(..., description="Longitude in decimal degrees"),
+):
+    """
+    Retrieve normalized soil moisture data
+    for a given location and time range.
+    """
+
+    soil_fetch = SmapFetcher(lat, long)
+
+    soil_data = soil_fetch.main()
+
+    return soil_data
+
+def calculate_index(
+    LST_day_normalized: list[float] = Form(...),
+    Pressure_day_normalized: list[float] = Form(...),
+    soil_moisture_normalized: list[float] = Form(...)
+):
+    """
+    Calculate a combined environmental index using the
+    normalized LST, pressure, and soil moisture data.
+    """
+
+    # Convert lists to pandas DataFrame for vector operations
+    df = pd.DataFrame({
+        "LST_day_normalized": LST_day_normalized,
+        "Pressure_day_normalized": Pressure_day_normalized,
+        "soil_moisture_normalized": soil_moisture_normalized
+    })
+
+    # Example: simple weighted average index
+    df["combined_index"] = (
+        0.4 * df["LST_day_normalized"] +
+        0.3 * df["Pressure_day_normalized"] +
+        0.3 * df["soil_moisture_normalized"]
+    )
+
+    # # Optional normalization (0–1)
+    # df["combined_index_normalized"] = (
+    #     (df["combined_index"] - df["combined_index"].min()) /
+    #     (df["combined_index"].max() - df["combined_index"].min())
+    # )
+
+    print(df.head())
+    return df
+
+
+def get_pressure_data(
+    lat: float = Query(..., description="Latitude of the location"),
+    lon: float = Query(..., description="Longitude of the location"),
+    start_date: str = Query(..., description="Start date YYYY-MM-DD"),
+    end_date: str = Query(..., description="End date YYYY-MM-DD")
+):
+    """
+    Fetch normalized pressure data for a given location and date range.
+    """
+
+    # 1️⃣ Initialize the fetcher
+    fetcher = PressureDataFetcher(lat, lon)
+
+    # 2️⃣ Fetch normalized pressure values
+    pressure_values = fetcher.normalizedPrediction(start_date, end_date)
+
+    return pressure_values
+
+
+if __name__ == "__main__":
+    print(get_freeze_thaw_data(address= 'Toronto, Canada'))
