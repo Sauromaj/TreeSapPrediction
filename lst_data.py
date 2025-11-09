@@ -4,12 +4,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def ret_normalized_land_temperature(start_date, end_date, location):
+def ret_normalized_land_temperature(start_date, end_date, lat, long, project = 'bramhackstest'):
     ee.Authenticate()
-    ee.Initialize(project='bramhackstest')
+    ee.Initialize(project = project)
 
     # Example: Quebec maple forest area
-    area = ee.Geometry.Point(location).buffer(5000)  # 5 km buffer
+    area = ee.Geometry.Point([lat, long]).buffer(5000)  # 5 km buffer
 
     # 1️⃣ MODIS Land Surface Temperature (MOD11A1)
     # LST values are scaled by 0.02 and originally in Kelvin
@@ -122,6 +122,6 @@ if __name__ == "__main__":
      # Sap flow season
     start_date = '2022-02-01'
     end_date   = '2024-04-01'
-    location = [-72.5, 46.5]
+    lat, long = [-72.5, 46.5]
 
-    print(ret_normalized_land_temperature(start_date,end_date, location))
+    print(ret_normalized_land_temperature(start_date,end_date, lat, long, project = 'bramhackstest'))
