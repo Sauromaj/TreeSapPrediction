@@ -68,7 +68,7 @@ class SmapFetcher:
         filtered = (
             self.collection
             .filterDate(self.start_date.isoformat(), end_plus_one.isoformat())
-            .filter(ee.Filter.calendarRange(13, 13, 'hour'))  # 13 UTC (~13:30)
+            .filter(ee.Filter.calendarRange(0, 1, 'hour'))  # 13 UTC (~13:30)
             .select(['sm_surface'])
         )
 
@@ -102,7 +102,7 @@ class SmapFetcher:
                 return 1
             elif 0.42 <= x <= 0.54:
                 return 0.6
-            elif x > 0.55:
+            elif x > 0.54:
                 return 0.4
             else:
                 return 0
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     start_date = '2023-02-01'
     end_date = '2024-04-01'
     # location in your MODIS/SMAP function is [lon, lat]
-    location = [48.152487, -81.156300]  # [lat, lon] in your MODIS example
+    location = [51.779472, -81.417514]  # [lat, lon] in your MODIS example
 
     lat, lon = location
 
