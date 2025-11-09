@@ -37,20 +37,41 @@
                 </div>
 
                 <div>
-                    <input type="checkbox" id ="yield" name="yield"style="font-family: Poppins;" onclick="checkBox(this)"> 
-                    <label for ="yield" style="font-family: Poppins;">Check to view your estimated yield</label>
+                    <!--<input type="checkbox" id ="yield" name="yield"style="font-family: Poppins;" onclick="checkBox(this)"> 
+                    <label for ="yield" style="font-family: Poppins;">Check to view your estimated yield</label>-->
 
                 </div>
 
                 <br>
 
-                <div id = giveYield>
+                <!--<div id = giveYield>
 
-                </div>
+                </div>-->
                 <br>
 
                 <button type="submit" id = "search" style="font-family: Poppins; font-size: 18px;">Search</button>
                 <script>
+                        // Helper function to format date
+                        function formatDate(dateStr) {
+                            const date = new Date(dateStr);
+
+                            // Month names
+                            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                            
+                            const day = date.getDate();
+                            const month = months[date.getMonth()];
+                            const year = date.getFullYear();
+
+                            // Add suffix for 1st, 2nd, 3rd, etc.
+                            const suffix = (day % 10 === 1 && day !== 11) ? "st" :
+                                        (day % 10 === 2 && day !== 12) ? "nd" :
+                                        (day % 10 === 3 && day !== 13) ? "rd" : "th";
+
+                            return `${month} ${day}${suffix}, ${year}`;
+                        }
+
+
                         document.getElementById('search').addEventListener('click', async () => {
                         const locationInput = document.getElementById('location').value;
 
@@ -75,10 +96,13 @@
 
                             const data = await response.json();
                             console.log('Response from backend:', data.start_date_freeze_thaw);
-                            alert('Data successfully sent!');
+                            const start = formatDate(data.start_date_freeze_thaw);
+                            const end = formatDate(data.end_date_freeze_thaw);
+                            const ideal = formatDate(data.pick_date);
+                            const res = `<br><h2>YOUR MAPLE TAP INFORMATION</h2><h3 style=\'margin-right:20%; margin-left: 20%;color: #0C0C0C;\'>START DATE: ${start}<br>END DATE: ${end}<br>IDEAL TAP DATE: ${ideal}<br>`
+                            document.getElementById("results").innerHTML = res
                         } catch (error) {
                             console.error('Error sending data:', error);
-                            alert('Failed to send data. Check the console for details.');
                         }
                         });
                     </script>
