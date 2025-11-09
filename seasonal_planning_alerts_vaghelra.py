@@ -3,11 +3,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 import time
 import os
-from twilio.rest import Client
 
-lat, lon = 43.7315, -79.7624  # Brampton, Ontario
-
-def fetch_year(year):
+def fetch_year(year, lat, lon):
     start_date = f"{year}-01-01"
     end_date   = f"{year}-04-30"
     url = "https://archive-api.open-meteo.com/v1/archive"
@@ -45,14 +42,14 @@ def compute_window(daily):
     else:
         return None, None
 
-def Predict():
+def Predict(lat, lon):
     today = datetime.now()
     years = [today.year - 2, today.year - 1]  # last 2 years
     results = []
 
     for y in years:
         try:
-            daily = fetch_year(y)
+            daily = fetch_year(y, lat, lon)
             start, end = compute_window(daily)
             results.append({"year": y, "start_dt": start, "end_dt": end})
         except Exception as e:
