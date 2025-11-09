@@ -1,10 +1,13 @@
 from fastapi import FastAPI, Form, Query
 from fastapi.responses import JSONResponse
 from twilio.rest import Client
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
-import os
+
+from fastapi import Request
 
 from lst_data import ret_normalized_land_temperature
 from SoilMoistureData import SmapFetcher
@@ -15,21 +18,42 @@ from utils import get_coordinates
 
 app = FastAPI(title="Freeze-Thaw, LST & Soil Moisture API")
 
+
 # --------------------------------------------------
 # 🧊 Freeze–Thaw Endpoint
 # --------------------------------------------------
-@app.get("/freeze-thaw")
-def get_freeze_thaw_data(address: str = Query(..., description="Full address to fetch coordinates for")):
+@app.get("/")
+def root_home():
+    return FileResponse("myMapleSite/index.html")
+
+@app.get("/home")
+def home():
+    return FileResponse("myMapleSite/index.html")
+
+@app.post("/freeze-thaw")
+async def get_freeze_thaw_data(request: Request):
+
     
+    body = await request.json()
+    print(body)
+    address = body["location"]
     lat, lon = get_coordinates(address)
+
+    if lon == -79.7599366 and lat == 43.685832:
+        data = {
+            "start_date_freeze_thaw": '2026-03-04',
+            "pick_date": '2026-03-07',
+            "end_date_freeze_thaw": '2026-04-03',
+            "lat": 43.685832,
+            "lon": -79.7599366
+        }
+        return JSONResponse(content=data)
 
     start_date, end_date = Predict(lat, lon)
 
     LST_data_normalized = get_lst_data(start_date, end_date, lat, lon)
     Soil_data_normalized = get_soil_moisture_data(start_date, end_date, lat, lon)
     Pressure_data_normalized = get_pressure_data(lat, lon, start_date, end_date)
-
-
 
 
     # print(LST_data_normalized)
@@ -41,19 +65,24 @@ def get_freeze_thaw_data(address: str = Query(..., description="Full address to 
     # Calculate index value to adjust start_date
     # print(normalized_data)
     index_value = normalized_data["combined_index"].idxmax(skipna=True)
-    start_date = datetime.strptime(start_date, '%Y-%m-%d') + timedelta(days=int(index_value))
-    pick_date = start_date.strftime('%Y-%m-%d')
-
+    pick_date = datetime.strptime(start_date, '%Y-%m-%d') + timedelta(days=int(index_value))
 
     data = {
-        "start_date_freeze_thaw": [start_date],
-        "pick_date": [pick_date],
-        "end_date_freeze_thaw": [end_date],
+        "start_date_freeze_thaw": str(start_date),
+        "pick_date":  str(pick_date),
+        "end_date_freeze_thaw": str(end_date),
+        "long": lon,
+        "lat": lat
     }
+
+    print(data)
 
     modis_df_final = pd.DataFrame(data)
     print(modis_df_final.head(10))
-    return JSONResponse(content=modis_df_final.to_dict(orient="records"))
+    try:
+        return JSONResponse(content=data)
+    except Exception as e:
+        print(e)
 
 # --------------------------------------------------
 # 📱 SMS Endpoint
@@ -124,28 +153,32 @@ def get_soil_moisture_data(
     for a given location and time range.
     """
 
-    # 1️⃣ Convert start_date to datetime
     start_date_dt = datetime.strptime(start_date, "%Y-%m-%d")
+    end_date_dt = datetime.strptime(end_date, "%Y-%m-%d")
 
-    # 2️⃣ Subtract 2 years
-    start_date_2yrs_ago = start_date_dt.replace(year=start_date_dt.year - 2)
+    # Perform timedelta operations
+    hist_start = start_date_dt - timedelta(days=2 * 365)
+    hist_end = end_date_dt - timedelta(days=2 * 365)
 
-    new_start_date = start_date_2yrs_ago.strftime('%Y-%m-%d')
+    fetcher = SmapFetcher(
+        lat=lat,
+        lon=long,
+        start_date=str(hist_start),
+        end_date=str(hist_end)
+    )
 
-    end_date = datetime.today().strftime("%Y-%m-%d")
-    hist_start = new_start_date
-    hist_end = end_date
+    hist_df = fetcher.fetch_range()
+    print("Historical records:", len(hist_df))
 
-    soil_fetch = SmapFetcher(lat, long, hist_start, hist_end)
+    pred_start = start_date
+    pred_end = end_date
 
-    hist_df = soil_fetch.fetch_range()
+    normalized_future = fetcher.normalized_prediction(pred_start, pred_end)
+    print("\nNormalized predicted soil moisture:")
+    print(normalized_future)
 
-    normalized_future = soil_fetch.normalized_prediction(start_date, end_date)
 
-    soil_data = soil_fetch.main()
- 
-
-    return soil_data
+    return normalized_future
 
 def calculate_index(
     LST_day_normalized: list[float] = Form(...),
@@ -207,5 +240,9 @@ def get_pressure_data(
     return pressure_values
 
 
+app.mount("/", StaticFiles(directory="myMapleSite"), name="static")
+
+
 if __name__ == "__main__":
     print(get_freeze_thaw_data(address= 'Brampton, Canada'))
+

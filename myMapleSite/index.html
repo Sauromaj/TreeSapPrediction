@@ -50,6 +50,38 @@
                 <br>
 
                 <button type="submit" id = "search" style="font-family: Poppins; font-size: 18px;">Search</button>
+                <script>
+                        document.getElementById('search').addEventListener('click', async () => {
+                        const locationInput = document.getElementById('location').value;
+
+                        if (!locationInput) {
+                            alert("Please enter a location.");
+                            return;
+                        }
+
+                        try {
+                            console.log(JSON.stringify({ location: locationInput }))
+                            const response = await fetch('/freeze-thaw', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ location: locationInput }),
+                            });
+                                
+                            if (!response.ok) {
+                            throw new Error(`Server error: ${response.status}`);
+                            }
+
+                            const data = await response.json();
+                            console.log('Response from backend:', data.start_date_freeze_thaw);
+                            alert('Data successfully sent!');
+                        } catch (error) {
+                            console.error('Error sending data:', error);
+                            alert('Failed to send data. Check the console for details.');
+                        }
+                        });
+                    </script>
 
                 <div id="map"> </div>
                 <div id="results"> </div>
