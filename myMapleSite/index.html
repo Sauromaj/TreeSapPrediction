@@ -8,34 +8,52 @@
 
     <title>myMaple</title>
     <link rel="stylesheet" href="styles.css" media="all">
+    <script type="text/javascript" src="scripts/scripts.js"> </script>
 
     <body>
-        <header>
+        <header style="position: absolute;">
             <img id = "myMapleLogo" src="img/myMapleLogo.png" alt="myMaple logo" width = 15%>
         </header>
 
         <div id="banner" style="text-align: center;">
             <br>
-            <h1>OPTIMIZE THE SYRUP TAPPING SEASON</h2>
-            <p1 >myMaple utilizes satellite technology and research data to monitor the state of maple trees, allowing for the prediction of ideal sap harvesting time and the estimation of a season's total yield. </p>
+            <br>
+            <br>
+            <br>
+            <br>
+            <br>
+            <br>
+            <br>
+
+            <h1 style="font-size: 52px;margin-left: 30%;margin-right: 30%;">OPTIMIZE THE SYRUP TAPPING SEASON</h1>
+            <h3 style="margin-right:30%; margin-left: 30%;">myMaple utilizes satellite technology and research data to monitor the state of maple trees, allowing for the prediction of ideal sap harvesting time and the estimation of a season's total yield.</h3>
         </div>
 
-        <div id = "map" style="text-align: center;">
-            <h2>ENTER YOUR LOCATION</h2>
+        <div style="text-align: center;">
             <br>
-            <form>
-                <input type="text" style = "font-family: Poppins; font-size: 16px;" size= "70;" id= "formLocation" name = "Location">
-                <br>
+            <h2>ENTER YOUR LOCATION</h2>
+                <div>
+                    <input type="text" id="location" name ="location" placeholder="Enter address or zip code" style = "font-family: Poppins; font-size: 16px;" size= "70;" >
+                </div>
+
+                <div>
+                    <input type="checkbox" id ="yield" name="yield"style="font-family: Poppins;" onclick="checkBox(this)"> 
+                    <label for ="yield" style="font-family: Poppins;">Check to view your estimated yield</label>
+
+                </div>
+
                 <br>
 
-                <input type="checkbox" style="font-family: Poppins;" name=" chkYield" value="Yield"> 
-                    <label for ="chkYield" style="font-family: Poppins;">Check to view your estimated yield</label>
+                <div id = giveYield>
 
-                <br>
+                </div>
                 <br>
 
-                <input type="button" style="font-family: Poppins; font-size: 18px;" value="Search" onclick="alert('Searching...')"> 
-            </form>
+                <button type="submit" id = "search" style="font-family: Poppins; font-size: 18px;">Search</button>
+
+                <div id="map"> </div>
+                <div id="results"> </div>
+                <div id="sms"> </div>
         </div>
 
         <br>
@@ -47,6 +65,7 @@
             <br>
         </footer>
 
+        <script type="text/javascript" src="scripts/forms.js"> </script>
     </body>
 
 
