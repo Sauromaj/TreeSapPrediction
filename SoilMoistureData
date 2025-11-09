@@ -9,41 +9,23 @@ class SmapFetcher:
 
     def __init__(self, lat, lon, start_date, end_date,
                  project='bramhackstest', buffer_km=9):
-        """
-        Initialize the fetcher with coordinates, date range, and optional buffer size.
-
-        Parameters
-        ----------
-        lat : float
-            Latitude of point of interest.
-        lon : float
-            Longitude of point of interest.
-        start_date : str or datetime-like
-            Start date for the time series (e.g., '2022-02-01').
-        end_date : str or datetime-like
-            End date for the time series (e.g., '2024-04-01').
-        """
-        # Initialize Earth Engine
+        """Initialize the fetcher with coordinates, date range, and optional buffer size."""
         try:
             ee.Initialize(project=project)
         except Exception:
             ee.Authenticate()
             ee.Initialize(project=project)
 
-        # Store geometry
         self.lon = lon
         self.lat = lat
         self.roi = ee.Geometry.Point([lon, lat]).buffer(buffer_km * 1000)
-
-        # Parse and store date range
         self.start_date = pd.to_datetime(start_date).date()
         self.end_date = pd.to_datetime(end_date).date()
-
-        # SMAP collection
         self.collection = ee.ImageCollection("NASA/SMAP/SPL4SMGP/008")
+        self.df = None
 
     def _extract_feature(self, img):
-        """Helper to extract surface soil moisture from one image."""
+        """Extract surface soil moisture from a single image."""
         stats = img.reduceRegion(
             reducer=ee.Reducer.mean(),
             geometry=self.roi,
@@ -53,42 +35,37 @@ class SmapFetcher:
         date = ee.Date(img.get('system:time_start'))
         return ee.Feature(None, {
             'date': date.format('YYYY-MM-dd'),
-            # In your dataset this band is usually 'sm_surface' or 'surface_soil_moisture'
             'sm_surface': stats.get('sm_surface')
         })
 
     def fetch_range(self):
-        """
-        Fetch 13 UTC soil-moisture data in the [start_date, end_date] range
-        specified when constructing the class.
-        """
-        # Earth Engine filterDate is [start, end), so add 1 day to make end inclusive
+        """Fetch soil moisture data for the initialized date range."""
         end_plus_one = self.end_date + datetime.timedelta(days=1)
-
         filtered = (
             self.collection
             .filterDate(self.start_date.isoformat(), end_plus_one.isoformat())
-            .filter(ee.Filter.calendarRange(0, 1, 'hour'))  # 13 UTC (~13:30)
+            .filter(ee.Filter.calendarRange(0, 1, 'hour'))
             .select(['sm_surface'])
         )
 
-        features = filtered.map(self._extract_feature)
+        features = filtered.map(self._extract_feature).filter(
+            ee.Filter.notNull(['sm_surface'])
+        )
         fc_dict = features.getInfo()
-
-        # Convert to DataFrame
-        rows = [f['properties'] for f in fc_dict['features']]
+        rows = [f['properties'] for f in fc_dict.get('features', [])]
         if not rows:
-            # No data in that range
-            return pd.DataFrame(columns=['date', 'sm_surface'])
+            self.df = pd.DataFrame(columns=['date', 'sm_surface'])
+            return self.df
 
         df = pd.DataFrame(rows)
         df['date'] = pd.to_datetime(df['date'])
         df['sm_surface'] = pd.to_numeric(df['sm_surface'], errors='coerce')
         df = df.sort_values('date').reset_index(drop=True)
-        return df[['date', 'sm_surface']]
+        self.df = df[['date', 'sm_surface']]
+        return self.df
 
     def normalize(self, df, column='sm_surface'):
-        """Apply custom normalization to soil moisture values based on defined ranges."""
+        """Apply custom normalization to soil moisture values."""
         def map_value(x):
             if x is None or pd.isna(x):
                 return np.nan
@@ -104,40 +81,89 @@ class SmapFetcher:
                 return 0.6
             elif x > 0.54:
                 return 0.4
-            else:
-                return 0
+            return 0
 
         df = df.copy()
-        if column not in df.columns:
-            raise ValueError(f"Column '{column}' not found in DataFrame.")
-
         df[f'{column}_normalized'] = df[column].apply(map_value)
         return df[['date', f'{column}_normalized']]
 
+    def predict_weighted(self, start_date, end_date):
+        """
+        Predict future soil moisture using only 1d, 2d, 1y, and 2y lags.
+        """
+        if self.df is None or self.df.empty:
+            raise ValueError("Run fetch_range() first to load historical data.")
+
+        df = self.df.copy().set_index('date')
+        start_date = pd.to_datetime(start_date)
+        end_date = pd.to_datetime(end_date)
+
+        preds = []
+        current_day = start_date
+
+        while current_day <= end_date:
+            lags = {
+                "1d": current_day - datetime.timedelta(days=1),
+                "2d": current_day - datetime.timedelta(days=2),
+                "1y": current_day - datetime.timedelta(days=365),
+                "2y": current_day - datetime.timedelta(days=730),
+            }
+
+            def get_sm(date):
+                if date in df.index:
+                    return float(df.loc[date, "sm_surface"])
+                idx = df.index.get_indexer([date], method="nearest")[0]
+                return float(df.iloc[idx]["sm_surface"])
+
+            vals = {key: get_sm(val) for key, val in lags.items()}
+
+            pred = (
+                0.35 * vals["1d"] +
+                0.15 * vals["2d"] +
+                0.30 * vals["1y"] +
+                0.20 * vals["2y"]
+            )
+
+            preds.append({
+                "date": current_day.normalize(),
+                "predicted_sm_surface": float(pred)
+            })
+            df.loc[current_day.normalize()] = pred
+            current_day += datetime.timedelta(days=1)
+
+        return pd.DataFrame(preds).sort_values("date").reset_index(drop=True)
+
+    def normalized_prediction(self, start_date, end_date):
+        """Predict and normalize future soil moisture for the given range."""
+        preds = self.predict_weighted(start_date, end_date)
+        df_norm = self.normalize(preds, column='predicted_sm_surface')
+        return df_norm['predicted_sm_surface_normalized']
+
     def main(self):
-        """
-        Fetch SMAP data in the given date range and return the normalized
-        soil moisture series.
-        """
+        """Fetch and normalize historical data."""
         df_hist = self.fetch_range()
         if df_hist.empty:
-            # Return empty series with correct name if no data
             return pd.Series(name='sm_surface_normalized', dtype=float)
-
         df_norm = self.normalize(df_hist, column='sm_surface')
         return df_norm["sm_surface_normalized"]
 
 
 if __name__ == "__main__":
-    # Example usage with the same date window as ret_normalized_land_temperature
-    start_date = '2023-02-01'
-    end_date = '2024-04-01'
-    # location in your MODIS/SMAP function is [lon, lat]
-    location = [51.779472, -81.417514]  # [lat, lon] in your MODIS example
-
+    hist_start = '2022-01-01'
+    hist_end = '2024-01-01'
+    location = [51.779472, -81.417514]
     lat, lon = location
 
-    fetcher = SmapFetcher(lat=lat, lon=lon,start_date=start_date, end_date=end_date)
-    
-    normalized_sm = fetcher.main()
-    print(normalized_sm)
+    fetcher = SmapFetcher(lat=lat, lon=lon,
+                          start_date=hist_start,
+                          end_date=hist_end)
+
+    hist_df = fetcher.fetch_range()
+    print("Historical records:", len(hist_df))
+
+    pred_start = '2024-02-01'
+    pred_end = '2026-02-15'
+
+    normalized_future = fetcher.normalized_prediction(pred_start, pred_end)
+    print("\nNormalized predicted soil moisture:")
+    print(normalized_future)
