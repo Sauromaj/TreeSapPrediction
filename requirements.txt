@@ -10,3 +10,7 @@ geopy>=2.4.0
 
 # Plotting and visualization
 matplotlib>=3.9.0
+
+fastapi
+twilio
+datetime
