@@ -26,14 +26,16 @@ def get_freeze_thaw_data(address: str = Query(..., description="Full address to 
     start_date, end_date = Predict(lat, lon)
 
     LST_data_normalized = get_lst_data(start_date, end_date, lat, lon)
-    # Soil_data_normalized = get_soil_moisture_data(start_date, end_date, lat, lon)
+    Soil_data_normalized = get_soil_moisture_data(start_date, end_date, lat, lon)
     Pressure_data_normalized = get_pressure_data(lat, lon, start_date, end_date)
+
+
 
 
     # print(LST_data_normalized)
     # print(Soil_data_normalized)
     # print(Pressure_data_normalized)
-    normalized_data = calculate_index(LST_data_normalized,Pressure_data_normalized, LST_data_normalized)
+    normalized_data = calculate_index(LST_data_normalized,Pressure_data_normalized, Soil_data_normalized)
 
 
     # Calculate index value to adjust start_date
@@ -122,9 +124,26 @@ def get_soil_moisture_data(
     for a given location and time range.
     """
 
-    soil_fetch = SmapFetcher(lat, long, start_date, end_date)
+    # 1️⃣ Convert start_date to datetime
+    start_date_dt = datetime.strptime(start_date, "%Y-%m-%d")
+
+    # 2️⃣ Subtract 2 years
+    start_date_2yrs_ago = start_date_dt.replace(year=start_date_dt.year - 2)
+
+    new_start_date = start_date_2yrs_ago.strftime('%Y-%m-%d')
+
+    end_date = datetime.today().strftime("%Y-%m-%d")
+    hist_start = new_start_date
+    hist_end = end_date
+
+    soil_fetch = SmapFetcher(lat, long, hist_start, hist_end)
+
+    hist_df = soil_fetch.fetch_range()
+
+    normalized_future = soil_fetch.normalized_prediction(start_date, end_date)
 
     soil_data = soil_fetch.main()
+ 
 
     return soil_data
 

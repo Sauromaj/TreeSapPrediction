@@ -124,14 +124,17 @@ class SmapFetcher:
                 0.20 * vals["2y"]
             )
 
+            print(pred)
             preds.append({
                 "date": current_day.normalize(),
                 "predicted_sm_surface": float(pred)
             })
+
+            
             df.loc[current_day.normalize()] = pred
             current_day += datetime.timedelta(days=1)
 
-        return pd.DataFrame(preds).sort_values("date").reset_index(drop=True)
+        return preds.sort_values("date").reset_index(drop=True)
 
     def normalized_prediction(self, start_date, end_date):
         """Predict and normalize future soil moisture for the given range."""
@@ -149,8 +152,8 @@ class SmapFetcher:
 
 
 if __name__ == "__main__":
-    hist_start = '2022-01-01'
-    hist_end = '2024-01-01'
+    hist_start = '2022-02-01'
+    hist_end = '2024-02-15'
     location = [51.779472, -81.417514]
     lat, lon = location
 
@@ -161,7 +164,7 @@ if __name__ == "__main__":
     hist_df = fetcher.fetch_range()
     print("Historical records:", len(hist_df))
 
-    pred_start = '2024-02-01'
+    pred_start = '2026-02-01'
     pred_end = '2026-02-15'
 
     normalized_future = fetcher.normalized_prediction(pred_start, pred_end)
